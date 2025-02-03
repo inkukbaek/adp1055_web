@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en-US">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <link rel="icon" href="https://inkukbaek.github.io/mcp2221a_web/favicon.ico" type="image/x-icon">
+        <title>I2C Host Adapter</title>
+        <link rel="stylesheet" type="text/css" href="styles.css" >
+    </head>
+
+    <body>
+        <div class="main-container">
+            <div class="header">
+                <h1>I2C/GPIO Controller</h1>
+                <button id="connect-mcp2221a">Connect<br>MCP2221A</button>
+                <button id="reset-mcp2221a">Reset<br>MCP2221A</button>
+                <button id="connect-aardvark">Connect<br>AARDVARK</button>
+                <button id="reset-aardvark">Reset<br>AARDVARK</button>
+
+                <div class="input-group-connect">
+                    <input type="text" id="connected-adapter" placeholder="Not Connected" readonly margin-top="10px">
+                </div>
+                <div class="input-group-connect">
+                    <label for="mcp2221a-freq">MCP2221A FREQ</label>
+                    <input type="text" id="mcp2221a-freq" value="100">
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>USB Control</h2>
+            </div>
+            <div class="i2c-container_usb">
+                <div class="i2c-controls_usb">
+                    <div class="input-group_usb">
+                        <label for="usb-command">USB COMMAND</label>
+                        <input type="text" id="usb-command" placeholder="USB COMMAND">
+                    </div>
+                    <div class="button-group_usb">
+                        <button id="usb-write-command">Write</button>
+                        <button id="usb-read-command">Read</button>
+                    </div>
+                </div>
+                <div class="i2c-controls_usb">
+                    <div class="input-group_usb">
+                        <label for="usb-read">USB READ</label>
+                        <input type="text" id="usb-read" placeholder="USB READ">
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>ADP1055 Control</h2>
+            </div>
+            <div class="section">
+                <div class="i2c-container">
+                    <div class="adp-controls">
+                        <input type="file" id="adp-json-input" accept=".json" style="display: none;">
+                        <div class="input-group">
+                            <label for="adp1055-address">ADP1055 Address</label>
+                            <input type="text" id="adp1055-address" placeholder="ADP1055 Address (hex)" value="0x80">
+                        </div>
+                        <div class="input-group">
+                            <label for="adp-reg-address">Register Address</label>
+                            <input type="text" id="adp-reg-address" placeholder="Register Address (hex)" value="0xfe93">
+                        </div>
+                        <div class="input-group">
+                            <label for="adp-data">Data</label>
+                            <input type="text" id="adp-data" placeholder="Data (hex)" value="0x00">
+                        </div>
+                        <!-- <div class="input-group">
+                            <label for="adp-data-length">ADP1055 Read Length</label>
+                            <input type="number" id="adp-data-length" placeholder="Length" value="1">
+                        </div> -->
+                        <div class="button-group">
+                            <button id="adp-write">Write</button>
+                            <button id="adp-read">Read</button>
+                            <button id="adp-check-default">Check Default</button>
+                            <button id="adp-restore-default">Restore Default</button>
+                            <button id="adp-store-user">Store User</button>
+                            <button id="adp-restore-user">Restore User</button>
+                            <button id="adp-json-to-setting">JSON to User</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>I2C Control</h2>
+            </div>
+            <div class="section">
+                <div class="i2c-container">
+                    <div class="i2c-controls">
+                        <div class="input-group">
+                            <label for="i2c-slave-address">I2C Slave Address</label>
+                            <input type="text" id="i2c-slave-address" placeholder="Slave Address (hex)" value="0x80">
+                        </div>
+                        <div class="input-group">
+                            <label for="i2c-register-address">Register Address</label>
+                            <input type="text" id="i2c-register-address" placeholder="Register Address (hex)" value="0xfe93">
+                        </div>
+                        <div class="input-group">
+                            <label for="i2c-data">Data</label>
+                            <input type="text" id="i2c-data" placeholder="Data (hex)" value="0x00">
+                        </div>
+                        <div class="input-group">
+                            <label for="i2c-length">I2C Read Length</label>
+                            <input type="number" id="i2c-length" placeholder="Length" value="1">
+                        </div>
+                        <div class="button-group">
+                            <button id="i2c-write">Write</button>
+                            <button id="i2c-read">Read</button>
+                            <button id="i2c-find-addr">Find Address</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="i2c-container">
+                    <div class="i2c-controls">
+                        <input type="file" id="fileInput" accept=".txt" style="display: none;">
+                        <div class="input-group">
+                            <label for="i2c-slave-address-script">I2C Slave Address for Script</label>
+                            <input type="text" id="i2c-slave-address-script" placeholder="Slave Address (hex)" value="0xf0">
+                        </div>
+                        <div class="button-group">
+                            <button id="i2c-load-script">Load Script</button>
+                        </div>
+                        <div class="button-group">
+                            <button id="i2c-run-script">Run Script</button>
+                        </div>
+                        <div class="input-group">
+                            <label for="i2c-script-format"> Script Format = '(Reg Addr(Hex), Data(Hex))'</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="i2c-container">
+                    <div class="i2c-controls">
+                        <div class="input-group">
+                            <label for="i2c-register-address-first">Dump Reg Address First</label>
+                            <input type="text" id="i2c-register-address-first" placeholder="First Register Address (hex)" value="0x00">
+                        </div>
+                        <div class="input-group">
+                            <label for="i2c-register-address-last">Dump Reg Address Last</label>
+                            <input type="text" id="i2c-register-address-last" placeholder="Last Register Address (hex)" value="0x0F">
+                        </div>
+                        <div class="button-group">
+                            <button id="i2c-dump">Dump</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="i2c-container">
+                    <div class="i2c-controls">
+                        <div class="input-group-short">
+                            <label for="bit7">bit 7</label>
+                            <input type="text" id="bit7" placeholder="Bit7" value="X">
+                        </div>
+                        <div class="input-group-short">
+                            <label for="bit6">bit 6</label>
+                            <input type="text" id="bit6" placeholder="Bit6" value="X">
+                        </div>
+                        <div class="input-group-short">
+                            <label for="bit5">bit 5</label>
+                            <input type="text" id="bit5" placeholder="Bit5" value="X">
+                        </div>
+                        <div class="input-group-short">
+                            <label for="bit4">bit 4</label>
+                            <input type="text" id="bit4" placeholder="Bit4" value="X">
+                        </div>
+                        <div class="input-group-short">
+                            <label for="bit3">bit 3</label>
+                            <input type="text" id="bit3" placeholder="Bit3" value="X">
+                        </div>
+                        <div class="input-group-short">
+                            <label for="bit2">bit 2</label>
+                            <input type="text" id="bit2" placeholder="Bit2" value="X">
+                        </div>
+                        <div class="input-group-short">
+                            <label for="bit1">bit 1</label>
+                            <input type="text" id="bit1" placeholder="Bit1" value="X">
+                        </div>
+                        <div class="input-group-short">
+                            <label for="bit0">bit 0</label>
+                            <input type="text" id="bit0" placeholder="Bit0" value="X">
+                        </div>
+                        <div class="button-group-short">
+                            <button id="i2c-bit-update">Bit update</button>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+            <div class="section">
+                <h2>GPIO Control</h2>
+                <div class="gpio-container">
+                    <!-- GPIO 0 -->
+                    <div class="gpio-item">
+                        <div id="led-gpio0" class="led"></div>
+                        <div class="gpio-controls">
+                            <button id="gpio0-on">ON</button>
+                            <button id="gpio0-off">OFF</button>
+                        </div>
+                        <button id="gpio0-toggle" class="gpio-toggle">TOGGLE</button>
+                    </div>
+                    <!-- GPIO 1 -->
+                    <div class="gpio-item">
+                        <div id="led-gpio1" class="led"></div>
+                        <div class="gpio-controls">
+                            <button id="gpio1-on">ON</button>
+                            <button id="gpio1-off">OFF</button>
+                        </div>
+                        <button id="gpio1-toggle" class="gpio-toggle">TOGGLE</button>
+                    </div>
+                    <!-- GPIO 2 -->
+                    <div class="gpio-item">
+                        <div id="led-gpio2" class="led"></div>
+                        <div class="gpio-controls">
+                            <button id="gpio2-on">ON</button>
+                            <button id="gpio2-off">OFF</button>
+                        </div>
+                        <button id="gpio2-toggle" class="gpio-toggle">TOGGLE</button>
+                    </div>
+                    <!-- GPIO 3 -->
+                    <div class="gpio-item">
+                        <div id="led-gpio3" class="led"></div>
+                        <div class="gpio-controls">
+                            <button id="gpio3-on">ON</button>
+                            <button id="gpio3-off">OFF</button>
+                        </div>
+                        <button id="gpio3-toggle" class="gpio-toggle">TOGGLE</button>
+                    </div>
+                </div>
+            </div>
+            <div class="'tab-container">
+                <div class="tab-buttons">
+                    <!-- <button class="tab-button active" onclick="openTab(event, 'logTab')">Log</button>
+                    <button class="tab-button" onclick="openTab(event, 'etc1Tab')">ETC1</button>
+                    <button class="tab-button" onclick="openTab(event, 'etc2Tab')">ETC2</button> -->
+                    <button id="tab-button-log" data-tab="logTab" class="tab-button active">Log</button>
+                    <!-- <button id="tab-button-etc1" data-tab="etc1Tab" class="tab-button">ETC1</button>
+                    <button id="tab-button-etc2" data-tab="etc2Tab" class="tab-button">ETC2</button> -->
+                </div>
+                <div id="logTab" class="tab-content active">
+                    <!-- <h2>Logs</h2> -->
+                    <div class="button-group">
+                        <button id="clear-log">Clear</button>
+                        <button id="extract-log">Extract</button>
+                    </div>
+                    <div class="log-container">
+                        <pre id="log"></pre>
+                    </div>
+                </div>
+                <div id="etc1Tab" class="tab-content">
+                    <div class="script-container">
+                        <h2>Scripts</h2>
+                        <textarea id="script"></textarea>
+                        <button id="script-run">Run</button>
+                    </div>
+                    <div class="script-container">
+                        <textarea id="console"></textarea>
+                    </div>
+
+                </div>
+                <div id="etc2Tab" class="tab-content">
+
+                </div>
+            </div>
+
+        </div>
+
+        <script type="module", src="main.js"></script>
+    </body>
+</html>

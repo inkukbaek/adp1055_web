@@ -96,8 +96,26 @@ export class AARDVARK {
         let response;
         this.i2c_dev_addr = parseInt(i2c_dev_addr/2);
 
-        const write_command_0 = [0x49, 0x04, this.i2c_dev_addr, 0x00, data.length+1, 0x00];
-        const write_command_1 = [0x69, data.length+1, i2c_reg_addr];
+        let write_command_1;
+        let i2c_reg_addr_length;
+        let reg_addr_high;
+        let reg_addr_low;
+        if (i2c_reg_addr > 0xFF) {
+            reg_addr_high = (i2c_reg_addr >> 8) & 0xFF;
+            reg_addr_low = i2c_reg_addr & 0xFF;
+            i2c_reg_addr_length = 2;
+            write_command_1 = [0x69, data.length+i2c_reg_addr_length, reg_addr_high, reg_addr_low];
+        } else {
+            reg_addr_high = 0;
+            reg_addr_low = i2c_reg_addr;
+            i2c_reg_addr_length = 1;
+            write_command_1 = [0x69, data.length+i2c_reg_addr_length, reg_addr_low];
+        }
+
+        const write_command_0 = [0x49, 0x04, this.i2c_dev_addr, 0x00, data.length+i2c_reg_addr_length, 0x00];
+        // const write_command_0 = [0x49, 0x04, this.i2c_dev_addr, 0x00, data.length+1, 0x00];
+        // const write_command_1 = [0x69, data.length+1, i2c_reg_addr];
+
         write_command_1.push(...data);
 
         try {
@@ -136,9 +154,29 @@ export class AARDVARK {
 
         let response;
         this.i2c_dev_addr = parseInt(i2c_dev_addr/2);
+        let i2c_reg_addr_length;
+        let read_command_0;
+        let read_command_1;
+        let reg_addr_high;
+        let reg_addr_low;
+        if (i2c_reg_addr > 0xFF) {
+            reg_addr_high = (i2c_reg_addr >> 8) & 0xFF;
+            reg_addr_low = i2c_reg_addr & 0xFF;
+            i2c_reg_addr_length = 2;
+            read_command_1 = [0x69, i2c_reg_addr_length, reg_addr_high, reg_addr_low];
+        } else {
+            reg_addr_high = 0;
+            reg_addr_low = i2c_reg_addr;
+            i2c_reg_addr_length = 1;
+            read_command_1 = [0x69, i2c_reg_addr_length, reg_addr_low];
+        }
+
+
         const reg_addr = i2c_reg_addr;
-        const read_command_0 = [0x49, 0x06, this.i2c_dev_addr, 0x00, 0x01, 0x08, 0x00, i2c_length];
-        const read_command_1 = [0x69, 0x01, i2c_reg_addr];
+        // const read_command_0 = [0x49, 0x06, this.i2c_dev_addr, 0x00, 0x01, 0x08, 0x00, i2c_length];
+        // const read_command_1 = [0x69, 0x01, i2c_reg_addr];
+        read_command_0 = [0x49, 0x06, this.i2c_dev_addr, 0x00, i2c_reg_addr_length, 0x08, 0x00, i2c_length];
+        // read_command_1 = [0x69, i2c_reg_addr_length, reg_addr_high, reg_addr_low];
         try {
             await this.device.claimInterface(this.interfaceNumber);
         }

@@ -25,7 +25,8 @@ document.getElementById('connect-aardvark').addEventListener('click', async () =
     i2c_host_adapter_name = i2c_host_adapter.device.productName;
     document.getElementById("connected-adapter").value = `${i2c_host_adapter_name} is connected`
 
-    logMessage(init_response.message)
+    logMessage(init_response.message);
+    await loadADP1055();
 });
 
 document.getElementById('connect-mcp2221a').addEventListener('click', async () => {
@@ -40,21 +41,7 @@ document.getElementById('connect-mcp2221a').addEventListener('click', async () =
     gp_status = await i2c_host_adapter.gpioGetPins();
     // console.log(gp_status);
     updateGPIOStates(gp_status);
-
-    const json_data = await loadJSON('./adp1055_regs.json')
-    adp1055_regs_all = json_data.result;
-    adp1055_regs = adp1055_regs_all.regs_standard_pmbus;
-    adp1055_regs_mfr = adp1055_regs_all.regs_mfr_pmbus;
-    // console.log(adp1055_regs_all)
-    console.log(adp1055_regs)
-    console.log(adp1055_regs_mfr)
-    const result = Object.entries(adp1055_regs).find(([reg_name, data]) => data.reg_info.addr == 0x01);
-    console.log(result)
-    adp1055 = new ADP1055(i2c_host_adapter, adp1055_regs_all);
-    sleep(0.1)
-    // await adp1055.readByte(0xfe93);
-    // await adp1055.readWord(0xfe93);
-
+    await loadADP1055();
 });
 
 document.getElementById('usb-write-command').addEventListener('click', async () => {
@@ -130,7 +117,6 @@ document.getElementById('i2c-read').addEventListener('click', async () => {
     const registerAddress = parseInt(document.getElementById('i2c-register-address').value, 16);
     const length = parseInt(document.getElementById('i2c-length').value);
     // Implement I2C read using WebHID/WebUSB API
-    // logMessage( 'i2c-read', hexString(slaveAddress), hexString(registerAddress), hexString(length) );
     const i2cReadData = await i2c_host_adapter.i2cRead(slaveAddress, registerAddress, length);
     if (i2cReadData.success){
         const readLog = Array.from(i2cReadData.data).map(x => hexString(x)).join(', ');
@@ -153,9 +139,9 @@ document.getElementById('adp-read').addEventListener('click', async () => {
     const registerAddress = parseInt(document.getElementById('adp-reg-address').value, 16);
 
     const registerData = await adp1055.readRegister(registerAddress);
-    const zPadding = 2**registerData.length;
-    console.log(`registerData: ${registerData.result}, 0x${registerData.result.toString(16).toUpperCase().padStart(zPadding, '0')}`)
-    logMessage(`ADP1055 - ${registerData.name}, ${registerData.addr}, 0x${registerData.result.toString(16).toUpperCase().padStart(zPadding, '0')}, bin: ${formatBinary(registerData.result, zPadding)}`)
+    const numBytes = registerData.length;
+    console.log(`registerData Read: ${registerData.result}, 0x${registerData.result.toString(16).toUpperCase().padStart(numBytes*2, '0')}`)
+    logMessage(`ADP1055 READ - ${registerData.name}, ${registerData.addr}, 0x${registerData.result.toString(16).toUpperCase().padStart(numBytes*2, '0')}, bin: ${formatBinary(registerData.result, numBytes)}`)
 });
 
 document.getElementById('adp-write').addEventListener('click', async () => {
@@ -164,21 +150,31 @@ document.getElementById('adp-write').addEventListener('click', async () => {
     const registerAddress = parseInt(document.getElementById('adp-reg-address').value, 16);
     const registerData = parseInt(document.getElementById("adp-data").value, 16);
     const registerInfo = await adp1055.getRegisterInfo(registerAddress);
-    const registerSize = registerInfo.length;
-    const zPadding = 2**registerSize;
+    const numBytes = registerInfo.length;
 
     await adp1055.writeRegister(registerAddress, registerData)
-
-    console.log( slaveAddress, registerAddress, registerData, registerSize, zPadding)
-    adp1055.writeRegister(slaveAddress, registerAddress)
-
-    // console.log(`registerData: ${registerData.result}, 0x${registerData.result.toString(16).toUpperCase().padStart(zPadding, '0')}`)
-    // logMessage(`ADP1055 - ${registerData.name}, ${registerData.addr}, 0x${registerData.result.toString(16).toUpperCase().padStart(zPadding, '0')}, bin: ${formatBinary(registerData.result, zPadding)}`)
+    console.log(`registerData Write: ${registerAddress} ${registerData}, 0x${registerData.toString(16).toUpperCase().padStart(numBytes*2, '0')}`)
+    logMessage(`ADP1055 WRITE - ${registerInfo.name}, ${registerInfo.addr}, 0x${registerData.toString(16).toUpperCase().padStart(numBytes*2, '0')}, bin: ${formatBinary(registerData, numBytes)}`)
 });
 
 document.getElementById('adp-check-default').addEventListener('click', async () => {
-    const result = await adp1055.checkRegistersDefault();
-    console.log(result)
+    console.log('adp-check-default')
+    try {
+        const result = await adp1055.checkRegistersDefault();
+        if (result.length>0) {
+            logMessage(`ADP1055 - ${result.length} unmatched register found`);
+            for (const res of result) {
+                logMessage(`ADP1055 - Unmatched Register - Type: ${res.reg_type_string}, Name: ${res.name}(${res.addr}) Read Value: ${res.result_hex}(default: ${res.default})`);
+            }
+
+        } else {
+            logMessage(`ADP1055 - All Registers Default`);
+        }
+    } catch(error) {
+        console.log(error)
+
+    }
+
 });
 
 document.getElementById('adp-restore-default').addEventListener('click', async () => {
@@ -194,11 +190,69 @@ document.getElementById('adp-restore-default').addEventListener('click', async (
 document.getElementById('adp-store-user').addEventListener('click', async () => {
     const slaveAddress = parseInt(document.getElementById('adp1055-address').value, 16);
     await adp1055.setSlaveAddress(slaveAddress);
+
+    let unlocked = false;
+    let log_msg;
+    let locked_data;
+
+    //  check locked
+    locked_data = await adp1055.readRegister(0xFE93);
+    if (locked_data.result>>15) {
+        unlocked = true;
+        log_msg = 'EEPROM UNLOCKED!';
+    } else {
+        unlocked = false;
+        log_msg = 'EEPROM LOCKED!';
+    }
+    console.log('unlocked', unlocked)
+    logMessage(`ADP1055 - ${log_msg}`)
+
+    //  unlock
+    await adp1055.writeRegister(0xD5, 0xff);
+    await sleep(50);
+    await adp1055.writeRegister(0xD5, 0xff);
+    await sleep(50);
+
+    //  check locked
+    locked_data = await adp1055.readRegister(0xFE93);
+    await sleep(50);
+
+    if (locked_data.result>>15) {
+        unlocked = true;
+        log_msg = 'EEPROM UNLOCKED!';
+    } else {
+        unlocked = false;
+        log_msg = 'EEPROM LOCKED!';
+    }
+    console.log('unlocked', unlocked)
+    logMessage(`ADP1055 - ${log_msg}`)
+
     const result = await adp1055.send_command('STORE_USER_ALL1');
+    await sleep(50);
+    console.log(result)
 
     const writeLog = []
+    logMessage(`ADP1055 - Store User All`)
     logMessage( `${i2c_host_adapter_name} - WRITE:`, hexString(adp1055.slave_addr), hexString(result.addr), `[${writeLog}]`);
-    console.log(result)
+
+    // lock
+    await adp1055.writeRegister(0xD5, 0x00);
+    await sleep(50);
+
+    //  check locked
+    locked_data = await adp1055.readRegister(0xFE93);
+    await sleep(50);
+    console.log(locked_data);
+    if (locked_data.result>>15) {
+        unlocked = true;
+        log_msg = 'EEPROM UNLOCKED!';
+    } else {
+        unlocked = false;
+        log_msg = 'EEPROM LOCKED!';
+    }
+    console.log('unlocked', unlocked)
+    logMessage(`ADP1055 - ${log_msg}`)
+
 });
 
 document.getElementById('adp-restore-user').addEventListener('click', async () => {
@@ -232,7 +286,6 @@ document.getElementById("adp-json-input").addEventListener("change", function (e
         console.log(adp1055_user_all)
         adp1055.loadJSONtoUserRegisters(adp1055_user_all);
         const result = await adp1055.writeJSONRegstoRegisters();
-        // loadADPJSON();
         console.log(result)
 
     }
@@ -611,7 +664,7 @@ function hexString(num) {
     return num.toString(16).toUpperCase().padStart(4, '0x')
 }
 
-function sleep(ms) {
+async function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
@@ -641,4 +694,21 @@ function formatBinary(num_input, num_bytes) {
     let binaryStr = num_input.toString(2);
     binaryStr = binaryStr.padStart(num_bytes*8, 0);
     return binaryStr.replace(/(.{4})/g, "$1_").slice(0, -1);
+}
+
+async function loadADP1055() {
+    const json_data = await loadJSON('./adp1055_regs.json')
+    adp1055_regs_all = json_data.result;
+    adp1055_regs = adp1055_regs_all.regs_standard_pmbus;
+    adp1055_regs_mfr = adp1055_regs_all.regs_mfr_pmbus;
+    // console.log(adp1055_regs_all)
+    // console.log(adp1055_regs)
+    // console.log(adp1055_regs_mfr)
+    // const result = Object.entries(adp1055_regs).find(([reg_name, data]) => data.reg_info.addr == 0x01);
+
+    adp1055 = new ADP1055(i2c_host_adapter, adp1055_regs_all);
+    const log_msg = `ADP1055 Default JSON loaded successfully`
+    console.log(log_msg)
+    logMessage(log_msg)
+
 }

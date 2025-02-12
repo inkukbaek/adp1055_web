@@ -283,6 +283,10 @@ export class MCP2221 extends HID_DEVICE {
     async i2cWrite(i2c_slave_addr, i2c_reg_addr, data, read_back=false) {
         const stack = new Error().stack.split("\n")[1]; // find method from stack
         const methodName = stack.match(/at (\S+)/)[1];  // extract method name
+        const i2cStateMachineStatus = await this.checkI2CStateMachineStatus();
+        if (!i2cStateMachineStatus) {
+            await this.i2cCancel();
+        }
         try {
             this.dev_addr = i2c_slave_addr;
             const reg_addr = i2c_reg_addr;
@@ -318,86 +322,87 @@ export class MCP2221 extends HID_DEVICE {
     async i2cRead(i2c_slave_addr, i2c_reg_addr, i2c_length=1) {
         const stack = new Error().stack.split("\n")[1]; // find method from stack
         const methodName = stack.match(/at (\S+)/)[1];  // extract method name
+        const maxRetries = 3;
+        const retryDelay = 50;
+        let retries = 0;
+
         return this.enqueue(async () => {
-            if (this.debug===1) {
-                console.log(methodName);
-            }
-            await this.sleep(10);
-            let write_success;
-            this.dev_addr = i2c_slave_addr;
-            const reg_addr = i2c_reg_addr;
+            while (retries < maxRetries) {
+                try {
+                    if (this.debug===1) {
+                        console.log(methodName, "- retries: ", retries);
+                    }
+                    const i2cStateMachineStatus = await this.checkI2CStateMachineStatus();
+                    if (!i2cStateMachineStatus) {
+                        throw new Error(`I2C Engine is not idle!, retry`);
+                    }
 
-            let param_w_ns = [];
-            if (reg_addr > 0xFF) {
-                const reg_addr_high = (i2c_reg_addr >> 8) & 0xFF;
-                const reg_addr_low = i2c_reg_addr & 0xFF;
-                param_w_ns = [2, 0, this.dev_addr, reg_addr_high, reg_addr_low ];
-            } else {
-                param_w_ns = [1, 0, this.dev_addr, reg_addr];
-            }
-            const command_w_ns = this.buildWritePacket(MCP2221.I2C_WRITE_DATA_NO_STOP, param_w_ns);
+                    await this.sleep(10);
+                    this.dev_addr = i2c_slave_addr;
+                    const reg_addr = i2c_reg_addr;
+                    let param_w_ns = [];
+                    if (reg_addr > 0xFF) {
+                        const i2c_transfer_length = 2;
+                        const reg_addr_high = (i2c_reg_addr >> 8) & 0xFF;
+                        const reg_addr_low = i2c_reg_addr & 0xFF;
+                        param_w_ns = [i2c_transfer_length, 0, this.dev_addr, reg_addr_high, reg_addr_low ];
 
-            const transfer_length_low = i2c_length;
-            const transfer_length_high = 0x00;
-            const param_r_rs = [transfer_length_low, transfer_length_high, this.dev_addr];
-            const command_r_rs = this.buildWritePacket(MCP2221.I2C_READ_REPEATED_START, param_r_rs);
+                    } else {
+                        const i2c_transfer_length = 1;
+                        const reg_addr_high = i2c_reg_addr;
+                        const reg_addr_low = 0;
+                        param_w_ns = [i2c_transfer_length, 0, this.dev_addr, reg_addr_high, reg_addr_low ];
+                    }
+                    const transfer_length_low = i2c_length;
+                    const transfer_length_high = 0x00;
+                    const param_r_rs = [transfer_length_low, transfer_length_high, this.dev_addr];
 
-            const command_r = this.buildWritePacket(MCP2221.I2C_READ);
+                    const command_w_ns = this.buildWritePacket(MCP2221.I2C_WRITE_DATA_NO_STOP, param_w_ns);
+                    const command_r_rs = this.buildWritePacket(MCP2221.I2C_READ_REPEATED_START, param_r_rs);
+                    const command_r = this.buildWritePacket(MCP2221.I2C_READ);
 
-            try {
+                    // Write I2C NO STOP (SLAVE ADDR - REGISTER ADDR)
+                    const writeNoStopReceivedData = await this.sendAndReceiveHIDReport(command_w_ns);
+                    if (writeNoStopReceivedData[1]==0x01) { // error check, error if data[1] is 0x01
+                        console.log('writeNoStopReceivedData', writeNoStopReceivedData)
+                        throw new Error("MCP2221A - I2C Engine Busy(0x94)!");
+                    };
 
-                // const receivedData = await this.sendAndReceiveHIDReport(command_w_ns);
-                const receivedData = await this.sendAndReceiveHIDReport(command_w_ns);
-                // await this.sleep(10);
-                if (receivedData[1]==0x01) { // error check, error if data[1] is 0x41
-                    write_success = false;
-                    console.log('receivedData', receivedData)
-                    throw new Error("MCP2221A - I2C Engine Busy(0x94)!");
-                };
-            } catch (error) {
-                await this.i2cCancel();
-                console.error("Error during communication:", error);
-            }
-            // error check here
-            try {
-                const receivedData = await this.sendAndReceiveHIDReport(command_r_rs);
-                // await this.sleep(10);
-                if (receivedData[1]==0x01) { // error check, error if data[1] is 0x41
-                    write_success = false;
-                    console.log('receivedData', receivedData)
-                    throw new Error("MCP2221A - I2C Engine Busy(0x93)!");
-                };
-            } catch (error) {
-                await this.i2cCancel();
-                console.error("Error during communication:", error);
-            }
-            // error check here
-            try {
-                await this.sleep(10);
-                const receivedData = await this.sendAndReceiveHIDReport(command_r);
-                await this.sleep(10);
-                // await this.sleep(this.I2C_DELAY)
-                let read_success;
-                read_success = true;
-                if (receivedData[1]==0x41) { // error check, error if data[1] is 0x41
-                    read_success = false;
-                    if (receivedData[1]==0x01) { // error check, error if data[1] is 0x41
-                        read_success = false;
-                        console.log('receivedData', receivedData)
+                    // Read I2C REPEATED START (SLAVE ADDR - REGISTER ADDR)
+                    const readDataRepeatedStartReceivedData = await this.sendAndReceiveHIDReport(command_r_rs);
+                    // await this.sleep(10);
+                    if (readDataRepeatedStartReceivedData[1]==0x01) { // error check, error if data[1] is 0x41
+                        console.log('readDataRepeatedStartReceivedData', readDataRepeatedStartReceivedData)
+                        throw new Error("MCP2221A - I2C Engine Busy(0x93)!");
+                    };
+
+                    // Read I2C DATA
+                    const readData = await this.sendAndReceiveHIDReport(command_r);
+
+                    if (readData[1]==0x41) { // error check, error if data[1] is 0x41
+                        const i2c_state = receivedData[2]; // error check, internal i2c engine state
+                        console.warn(methodName, ": i2cStateMachineStatus", `(0x${i2c_state.toString(16).padStart(2,"0")})`, 'receivedData', receivedData)
                         throw new Error("MCP2221A - Read Error I2C Slave Data from the I2C Engine!");
                     };
-                };
-                const i2c_state = receivedData[2]; // error check, internal i2c engine state
-                const num_bytes = receivedData[3]; // num of bytes
-                const r_data = Array.from(receivedData.slice(4, 4+i2c_length));
-                console.log(methodName, {"addr":reg_addr, "data":r_data, "success":read_success})
-                return {"addr":reg_addr, "data":r_data, "success":read_success};
-            } catch (error) {
-                await this.i2cCancel();
-                console.error("Error during communication:", error);
-            }
-                // error check here
 
+                    const num_bytes = readData[3]; // num of bytes
+                    const r_data = Array.from(readData.slice(4, 4+i2c_length));
+                    console.log(methodName, "-" , "ADDR:", reg_addr, "READ: ", r_data)
+                    return {"addr":reg_addr, "data":r_data, "success":true};
+
+                } catch (error) {
+                    await this.i2cCancel();
+                    console.error(`Error during communication (attempt ${retries + 1}/${maxRetries}):`, error);
+                    retries++;
+                    if (retries < maxRetries) {
+                        console.log(`Retrying after ${retryDelay}ms...`);
+                        await this.sleep(retryDelay);
+                    } else {
+                        console.error("Max retries reached. Aborting.");
+                        throw new Error("I2C Read failed after multiple attempts.");
+                    }
+                }
+            };
         });
 
     }
@@ -445,7 +450,34 @@ export class MCP2221 extends HID_DEVICE {
             const param = [MCP2221.I2C_CANCEL];
             const command = this.buildWritePacket(MCP2221.STATUS_SET_PARAM, [0x00, ...param])
             const receivedData = await this.sendAndReceiveHIDReport(command);
-            return receivedData;
+            const i2cStateMachineState = receivedData[8];
+            console.log(methodName, i2cStateMachineState, receivedData);
+            if (i2cStateMachineState !=0) {
+                console.warn(methodName, `- I2C State Machine Status is not idle(0x${i2cStateMachineState.toString(16).padStart(2,"0")})`);
+                return false;
+            } else {
+                return true;
+            }
+        } catch (error) {
+            console.error("Error during communication:", error);
+        }
+    }
+
+    async checkI2CStateMachineStatus() {
+        const stack = new Error().stack.split("\n")[1]; // find method from stack
+        const methodName = stack.match(/at (\S+)/)[1];  // extract method name
+        try {
+            const param = [];
+            const command = this.buildWritePacket(MCP2221.STATUS_SET_PARAM, [0x00, ...param])
+            const receivedData = await this.sendAndReceiveHIDReport(command);
+            const i2cStateMachineState = receivedData[8];
+            // console.log(methodName, i2cStateMachineState, receivedData);
+            if (i2cStateMachineState !=0) {
+                console.warn(methodName, `- I2C State Machine Status is not idle(0x${i2cStateMachineState.toString(16).padStart(2,"0")})`);
+                return false;
+            } else {
+                return true;
+            }
         } catch (error) {
             console.error("Error during communication:", error);
         }
